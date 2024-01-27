@@ -1,0 +1,164 @@
+plugins {
+    id("com.github.johnrengelman.shadow") version "8.1.1"
+    id("io.micronaut.application") version "4.2.1"
+    id("io.micronaut.aot") version "4.2.1"
+}
+
+version = "0.1"
+group = "io.hashimati"
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    annotationProcessor("io.micronaut:micronaut-http-validation")
+    annotationProcessor("io.micronaut.serde:micronaut-serde-processor")
+    implementation("io.micrometer:context-propagation")
+    implementation("io.micronaut:micronaut-management")
+    implementation("io.micronaut.reactor:micronaut-reactor")
+    implementation("io.micronaut.serde:micronaut-serde-jackson")
+    implementation("io.micronaut.views:micronaut-views-fieldset")
+    implementation("io.micronaut.views:micronaut-views-thymeleaf")
+    compileOnly("io.micronaut:micronaut-http-client")
+    runtimeOnly("ch.qos.logback:logback-classic")
+    runtimeOnly("org.yaml:snakeyaml")
+    testImplementation("io.micronaut:micronaut-http-client")
+    developmentOnly("io.micronaut.controlpanel:micronaut-control-panel-management")
+    developmentOnly("io.micronaut.controlpanel:micronaut-control-panel-ui")
+}
+
+
+application {
+    mainClass.set("io.hashimati.Application")
+}
+java {
+    sourceCompatibility = JavaVersion.toVersion("17")
+    targetCompatibility = JavaVersion.toVersion("17")
+}
+
+
+graalvmNative.toolchainDetection = false
+micronaut {
+    runtime("netty")
+    testRuntime("junit5")
+    processing {
+        incremental(true)
+        annotations("io.hashimati.*")
+    }
+    aot {
+        // Please review carefully the optimizations enabled below
+        // Check https://micronaut-projects.github.io/micronaut-aot/latest/guide/ for more details
+        optimizeServiceLoading = false
+        convertYamlToJava = false
+        precomputeOperations = true
+        cacheEnvironment = true
+        optimizeClassLoading = true
+        deduceEnvironment = true
+        optimizeNetty = true
+    }
+}
+//register the npm task
+tasks.register("npmTask", npmTask)
+
+
+abstract class npmTask extends DefaultTask {
+    @Input
+    abstract Property<String> getWorkingDir()
+    npmTask() {
+        // set working dir to project root
+        workingDir.convention(project.projectDir.absolutePath+"/src/main/webapp".replace("/", File.separator))
+    }
+
+    def printProcesssOutput(process) {
+        process.inputStream.eachLine { line ->
+            println line
+        }
+        process.errorStream.eachLine { line ->
+            println line
+        }
+    }
+    @TaskAction
+    def buildNpm() {
+        //  println "Greeting: ${greeting.get()}"
+        println "Working Dir: ${workingDir.get()}"
+        //get the operating system
+        def os = System.getProperty("os.name").toLowerCase();
+        println "OS: ${os}"
+
+        //create the assets folder if it does not exist
+        File staticFolder = new File(project.projectDir.absolutePath + "/src/main/resources/static".replace("/", File.separator));
+        if(!staticFolder.exists()) {
+            staticFolder.mkdirs();
+        }
+
+        //create the views folder if it does not exist
+        File views = new File(project.projectDir.absolutePath + "/src/main/resources/views".replace("/", File.separator));
+        if(!views.exists()) {
+            views.mkdirs();
+        }
+
+        if(os.contains("win")) {
+
+            ProcessBuilder npmInstallBuilder = new ProcessBuilder("npm.cmd", "install").directory(new File(workingDir.get()));
+            Process npmInstall=  npmInstallBuilder.start()
+
+            printProcesssOutput(npmInstall)
+            if(npmInstall.alive == true)
+            {
+                npmInstall.waitFor();
+
+            }
+            ProcessBuilder builder = new ProcessBuilder("npm.cmd", "run", "build").directory(new File(workingDir.get()));
+            Process npmBuild =builder.start();
+
+            printProcesssOutput(npmBuild)
+            //check if builder is not finished
+            if(npmBuild.alive == true) {
+                //wait for the process to finish
+                npmBuild.waitFor();
+            }
+            ProcessBuilder moveIndexBuilder = new ProcessBuilder("cmd.exe", "/c", "move", project.projectDir.absolutePath + "/src/main/webapp/dist/index.html".replace("/", File.separator), project.projectDir.absolutePath + "/src/main/resources/views".replace("/", File.separator));
+            printProcesssOutput(moveIndexBuilder.start());
+            ProcessBuilder moveAssetsBuilder = new ProcessBuilder("cmd.exe", "/c", "move", project.projectDir.absolutePath + "/src/main/webapp/dist/assets".replace("/", File.separator), project.projectDir.absolutePath + "/src/main/resources/static".replace("/", File.separator));
+            printProcesssOutput(moveAssetsBuilder.start());
+            ProcessBuilder moveFaviconBuilder = new ProcessBuilder("cmd.exe", "/c", "move", project.projectDir.absolutePath + "/src/main/webapp/dist/favicon.ico".replace("/", File.separator), project.projectDir.absolutePath + "/src/main/resources/static".replace("/", File.separator));
+            printProcesssOutput(moveFaviconBuilder.start());
+        }
+        else {
+
+            ProcessBuilder npmInstallBuilder = new ProcessBuilder("npm", "install").directory(new File(workingDir.get()));
+            Process npmInstall=  npmInstallBuilder.start()
+            printProcesssOutput(npmInstall);
+            if(npmInstall.alive == true)
+            {
+                npmInstall.waitFor();
+
+            }
+            ProcessBuilder builder = new ProcessBuilder("npm", "run", "build").directory(new File(workingDir.get()));
+            Process npmBuild =builder.start();
+            printProcesssOutput(npmBuild)
+            //check if builder is not finished
+            if(npmBuild.alive == true) {
+                //wait for the process to finish
+                npmBuild.waitFor();
+            }
+
+            ProcessBuilder moveIndexBuilder = new ProcessBuilder("mv", project.projectDir.absolutePath + "/src/main/webapp/dist/index.html".replace("/", File.separator), project.projectDir.absolutePath + "/src/main/resources/views".replace("/", File.separator));
+            printProcesssOutput(moveIndexBuilder.start());
+
+            ProcessBuilder moveAssetsBuilder = new ProcessBuilder("mv", project.projectDir.absolutePath + "/src/main/webapp/dist/assets".replace("/", File.separator), project.projectDir.absolutePath + "/src/main/resources/static".replace("/", File.separator));
+            printProcesssOutput(moveAssetsBuilder.start());
+
+            ProcessBuilder moveFaviconBuilder = new ProcessBuilder("mv", project.projectDir.absolutePath + "/src/main/webapp/dist/favicon.ico".replace("/", File.separator), project.projectDir.absolutePath + "/src/main/resources/static".replace("/", File.separator));
+            printProcesssOutput(moveFaviconBuilder.start());
+
+
+
+        }
+
+
+    }
+}
+
+
